@@ -2,32 +2,108 @@ library(tidyverse)
 library(ggplot2)
 library(dplyr)
 library(tidyr)
-kiva<-read.csv("kivaData_augmented.csv", header = TRUE)
+library(ggmap)
+library(raster)
+library(sp)
+
+getwd()
+# the spatial class has 10 subclasses
+getClass("Spatial")
+getClass("SpatialPolygonsDataFrame")
+#import the data 
+kiva<-read.csv("kivaData_augmented.csv", header = TRUE, stringsAsFactors = FALSE)
 colnames(kiva)
 dim(kiva)
 mpidata<-read.csv("MPIData_augmented.csv", header = TRUE)
 colnames(mpidata)
-str(kiva)
-kiva_data<-kiva[1:13]
-dim(kiva_data)
-str(kiva_data)
-head(kiva_data,5)
-loan_sector<-kiva_data%>%
-  select(country, sector, activity, loan_amount)%>%
-  group_by(sector)%>%
+kiva_data<-kiva[,c(1:12,22:24)]
+colnames(kiva_data)
+kiva1<-kiva_data%>%
+  drop_na()
+dim(kiva1)
+coordinates(kiva1)<-c("longitude", "latitude")
+# the class is spatialpointsdataframe and sp
+str(kiva1)
+summary(kiva1)
+#we notice that proj4string is NA
+# the coordinate reference system is missing
+crs.geo1<-CRS("+proj=longlat")
+proj4string(kiva1)<-crs.geo1
+summary(kiva1)
+
+dim(kiva1)
+library(rgdal)
+#write and save the data in shapefile
+writeOGR(kiva1, dsn = "C:/Users/Sineus/Desktop/spatial data analysis",layer="kiva1", driver = "ESRI Shapefile")
+
+#look for the Directory
+dir()
+#read the data
+loandata<-readOGR("C:/Users/Sineus/Desktop/spatial data analysis", "kiva1", verbose = TRUE)
+summary(loandata)
+
+summary(kiva1)
+summary(loandata)
+library(tmap)
+head(loandata@data$lon_mnt)
+tm_shape(loandata) +
+  tm_fill(col = "lon_mnt")+
+ 
+tm_shape(coordinates(loandata))+
+  tm_fill("lon_mnt")
+
+plot(kiva1)
+plot(coordinates(kiva1), col="red", add=TRUE)
+class(loandata)
+
+isn<-loandata$sector=="Education"
+reda<-loandata[isn,]
+plot(reda)
+library(sp)
+library(tmap)
+qtm(shp = loandata, fill = "lon_mnt")
+
+sector_activity<-kiva_data%>%
+  select(activity,sector, loan_amount)%>%
+  group_by(sector, activity)%>%
   summarise(tota=sum(loan_amount),
+            som=n(),
             aver=mean(loan_amount, na.rm=TRUE))%>%
+  arrange(!desc(sector))
+
+head(sector_activity)
+loan_sector<-kiva_data%>%
+  group_by(sector)%>%
+  summarise(tota=sum(loan_amount))%>%
   arrange(desc(tota))
 
 head(loan_sector)
 
+sector_Education<-kiva_data[kiva_data$sector=="Education",]
+head(sector_Education,5)
+
+money_sect<-kiva_data%>%
+  filter(sector=="Education")%>%
+  group_by(country)%>%
+  summarise(tota=sum(loan_amount))%>%
+  arrange(desc(tota))
+
+head(money_sect,5)
+
+educ_ag<-aggregate(loan_amount~country, FUN = sum, data = sector_Education)
+head(educ_ag)
 loan_country<-kiva_data%>%
   group_by(country, longitude, latitude)%>%
   summarise(tot=sum(loan_amount,na.rm=TRUE))%>%
   drop_na()
 
 head(loan_country)
+
 dim(loan_country)
+
+
+glimpse(kiva_data)
+
 class(loan_country)
 library(RColorBrewer)
 help("RColorBrewer")
@@ -38,6 +114,7 @@ world<-getMap(resolution = "low")
 class(world)
 plot(world)
 str(world@data)
+
 (with_world<-ggplot()+
     geom_polygon(data = world@data, aes(x=LON, y=LAT, group=REGION))+
     geom_point(data=loan_country,
@@ -50,6 +127,7 @@ str(world@data)
     guides(colour=guide_legend(title = "loan")))
 
 plot(world)
+
 aggricult<-kiva_data%>%
   filter(sector=="Agriculture")
 head(aggricult)
@@ -69,16 +147,14 @@ ggmap(aggricult)%>%
 
 print(countries_sp)
 
-#Get the latest Install
-if(!requireNamespace("devtools")) install.packages("devtools")
-devtools::install_github("dkahle/ggmap", ref = "tidyup", force=TRUE)
-library(ggmap)
-#set the API Key
-ggmap::register_google(key = "AIzaSyDIWFZWSD82HBfQGqwKIjlsm4wR43-y0lk")
-word_data<-map_data("world")
-str(word_data)
 
-
+# Coordinates for the location of interest
+nyc <- c(lon = -74.0059, lat = 40.7128)
+str(nyc)
+# 1. Download the relevant map
+nyc_map <- get_map(location = nyc, zoom = 10)
+# 2. Display the map
+ggmap(nyc_map)
 library(sp)
 library(rworldmap)
 
@@ -115,6 +191,7 @@ get_stamenmap(us, zoom = 5, maptype = "toner-lite") %>% ggmap()
 
 install.packages(c("sf", "rnaturalearth", "rnaturalearthdata", "googleway", "ggspatial", "cowplot"))
 library(sf)
+
 library(rnaturalearth)
 library(rnaturalearthdata)
 world<-ne_countries(scale="medium", returnclass = "sf")
@@ -140,3 +217,6 @@ gplot() +
         ,axis.ticks = element_blank()
         ,legend.position = "none"
   )
+
+
+
